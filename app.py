@@ -1,11 +1,7 @@
- import streamlit as st
-
+import streamlit as st
 from audio_recorder_streamlit import audio_recorder
-
 import openai
-
 import base64
-
 import os
 
 
