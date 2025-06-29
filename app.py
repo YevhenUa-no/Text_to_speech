@@ -140,8 +140,6 @@ def main():
         response_audio_file = "ai_response_audio.mp3"
 
         # Display the audio recorder with the fixed-duration trick
-        # Set a generous pause_threshold (e.g., 5 minutes)
-        # The user can click again to stop before this maximum duration
         recorded_audio_bytes = audio_recorder(
             text="",
             icon_size="3x",
@@ -150,14 +148,10 @@ def main():
         )
 
         # Update recording status based on user interaction
-        # If recorded_audio_bytes is None and it was previously active, it means recording just started
+        # If recorded_audio_bytes is None and it was previously not active, it means recording just started
         if recorded_audio_bytes is None and not st.session_state.recording_active:
-            # This is a heuristic: If audio_recorder is displayed and no bytes are returned yet,
-            # and our state says it wasn't active, assume it just started.
-            # This might re-trigger if other Streamlit elements cause a rerun without user interaction,
-            # but for a simple single button, it works.
             st.session_state.recording_active = True
-            st.experimental_rerun() # Rerun to display the message immediately
+            st.rerun() # Rerun to display the message immediately
 
         # Display the "click to stop" message when recording is active
         if st.session_state.recording_active:
