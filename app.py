@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_mic_recorder import mic_recorder # Ensure this import is correct
+from audio_recorder_streamlit import audio_recorder
 import openai
 import base64
 import os
@@ -58,9 +58,12 @@ def main():
     st.title("Lazy Voice Chatbot")
     st.write("Hello! Tap the microphone to talk with me. What can I do for you today?")
 
-    # Initialize messages for chat display (assuming you want a chat history)
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    # Initialize session state for recording status
+    if 'recording_active' not in st.session_state:
+        st.session_state.recording_active = False
+    # This flag helps us differentiate between initial None and recording-in-progress None
+    if 'last_recorded_audio_bytes' not in st.session_state:
+        st.session_state.last_recorded_audio_bytes = None
 
     # Sidebar for configuration
     st.sidebar.title("Configuration")
@@ -89,49 +92,45 @@ def main():
         st.error(f"Error setting up OpenAI client: {e}")
         return
 
-    # Only show mic recorder if client is successfully set up
+    # Only show audio recorder if client is successfully set up
     if client:
         temp_audio_file = "temp_recorded_audio.wav"
         response_audio_file = "ai_response_audio.mp3"
 
-        # --- Display chat messages ---
-        for message in st.session_state.messages:
-            if message["role"] != "system":
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+        # Determine the text for the audio_recorder button
+        button_text = "Tap to record and to stop recording. max 3 minutss"
+       
 
-        # --- Microphone recording and text input ---
-        col1, col2 = st.columns([0.8, 0.2])
+        # Display the audio recorder
+        # The audio_recorder returns None while recording is in progress
+        recorded_audio_bytes = audio_recorder(
+            text=button_text, # Dynamic text based on recording state
+            icon_size="4x",
+            energy_threshold=(-1.0, 1.0),  # Disable automatic stop on silence
+            pause_threshold=180.0,         # Max recording duration (e.g., 3 minutes)
+        )
 
-        with col1:
-            # Text input for chat
-            prompt = st.chat_input("Your response", max_chars=1000, key="chat_text_input")
+        # Logic to update recording state
+        # Case 1: recorded_audio_bytes is None (recorder is idle or active recording)
+        if recorded_audio_bytes is None:
+            # If last_recorded_audio_bytes was NOT None, but now recorded_audio_bytes IS None,
+            # it means a new recording has just started (user clicked).
+            if st.session_state.last_recorded_audio_bytes is not None:
+                st.session_state.recording_active = True
+                st.session_state.last_recorded_audio_bytes = None # Reset for the next cycle
+                st.rerun() # Rerun to update button text immediately
+            elif st.session_state.recording_active:
+                # If it's already active and still None, it's just continuing to record
+                pass
+            else:
+                # Initial load or after processing, not yet recording
+                st.session_state.recording_active = False
 
-        with col2:
-            # Microphone recorder button
-            mic_recorder_output = mic_recorder(
-                start_prompt="🎙️ Speak",
-                stop_prompt="⏹️ Stop",
-                just_once=True, # Transcribe once per recording (re-enables button after stop)
-                use_container_width=True,
-                key="mic_recorder_button"
-            )
-            # Store the output in session state for processing later if needed, or directly use it here
-            st.session_state.audio_bytes_data = mic_recorder_output
+        # Case 2: recorded_audio_bytes is NOT None (recording has finished)
+        else:
+            st.session_state.recording_active = False
+            st.session_state.last_recorded_audio_bytes = recorded_audio_bytes # Store for next cycle's comparison
 
-        # Process recorded audio if available from mic_recorder
-        # This block will only run if mic_recorder_output is NOT None (i.e., recording has just finished)
-        if st.session_state.audio_bytes_data:
-            recorded_audio_bytes = st.session_state.audio_bytes_data['bytes']
-            # IMPORTANT: Clear the audio data immediately after retrieving it
-            # This prevents the block from re-executing on subsequent reruns
-            st.session_state.audio_bytes_data = None
-
-            # Add user message placeholder to chat history and trigger a rerun to show it
-            st.session_state.messages.append({"role": "user", "content": "_(Transcribing Audio...)_"})
-            st.rerun() # Show placeholder immediately
-
-            # Save the recorded bytes to a temporary file
             try:
                 with open(temp_audio_file, "wb") as f:
                     f.write(recorded_audio_bytes)
@@ -145,13 +144,8 @@ def main():
             transcribed_text = transcribe_audio(client, temp_audio_file)
 
             if transcribed_text:
-                # Update the last user message with the transcribed text
-                # We assume the last message is the placeholder we just added
-                if st.session_state.messages and st.session_state.messages[-1]["role"] == "user" and \
-                   st.session_state.messages[-1]["content"] == "_(Transcribing Audio...)_":
-                    st.session_state.messages[-1]["content"] = transcribed_text
-                else: # Fallback in case of unexpected state
-                    st.session_state.messages.append({"role": "user", "content": transcribed_text})
+                st.subheader("Transcribed Text")
+                st.info(transcribed_text)
 
                 st.spinner("Getting AI response...")
                 ai_response = fetch_ai_response(client, transcribed_text, user_defined_system_prompt)
@@ -160,29 +154,18 @@ def main():
                     st.spinner("Converting AI response to audio...")
                     text_to_audio(client, ai_response, response_audio_file, selected_voice)
 
-                    st.session_state.messages.append({"role": "assistant", "content": ai_response})
-
                     if os.path.exists(response_audio_file):
                         auto_play_audio(response_audio_file)
-            st.rerun() # Crucial rerun here to update chat messages after transcription/AI response
+                        st.subheader("AI Response")
+                        st.success(ai_response)
+                    else:
+                        st.warning("Could not generate audio for AI response.")
 
-        # Handle text input prompt
-        if prompt:
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            # No need for st.chat_message here as it will be rendered by the loop at the top
-            
-            st.spinner("Getting AI response...")
-            ai_response = fetch_ai_response(client, prompt, user_defined_system_prompt)
-
-            if ai_response:
-                st.session_state.messages.append({"role": "assistant", "content": ai_response})
-            st.rerun() # Rerun to clear chat input and update messages
-
-        # Clean up temporary audio files at the end of processing
-        if os.path.exists(temp_audio_file):
-            os.remove(temp_audio_file)
-        if os.path.exists(response_audio_file):
-            os.remove(response_audio_file)
+            # Clean up temporary audio files at the end of processing
+            if os.path.exists(temp_audio_file):
+                os.remove(temp_audio_file)
+            if os.path.exists(response_audio_file):
+                os.remove(response_audio_file)
 
     else:
         st.warning("Please ensure your OpenAI API Key is configured to use the voice feature.")
