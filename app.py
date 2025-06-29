@@ -98,14 +98,14 @@ def main():
         response_audio_file = "ai_response_audio.mp3"
 
         # Determine the text for the audio_recorder button
-        button_text = "Tap to record/stop recording. max 3 mins"
+        button_text = "Tap to record and to stop recording. max 3 minutss"
        
 
         # Display the audio recorder
         # The audio_recorder returns None while recording is in progress
         recorded_audio_bytes = audio_recorder(
             text=button_text, # Dynamic text based on recording state
-            icon_size="3x",
+            icon_size="4x",
             energy_threshold=(-1.0, 1.0),  # Disable automatic stop on silence
             pause_threshold=180.0,         # Max recording duration (e.g., 3 minutes)
         )
