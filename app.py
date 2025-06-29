@@ -97,12 +97,10 @@ def main():
         temp_audio_file = "temp_recorded_audio.wav"
         response_audio_file = "ai_response_audio.mp3"
 
-        # Determine the text for the audio_recorder button
-        button_text = "Tap to record and to stop recording. max 3 minutss"
-       
+        # Determine the text for the audio_recorder button based on recording_active state
+        button_text = "Turn off recording" if st.session_state.recording_active else "Turn on recording"
 
         # Display the audio recorder
-        # The audio_recorder returns None while recording is in progress
         recorded_audio_bytes = audio_recorder(
             text=button_text, # Dynamic text based on recording state
             icon_size="4x",
@@ -111,7 +109,6 @@ def main():
         )
 
         # Logic to update recording state
-        # Case 1: recorded_audio_bytes is None (recorder is idle or active recording)
         if recorded_audio_bytes is None:
             # If last_recorded_audio_bytes was NOT None, but now recorded_audio_bytes IS None,
             # it means a new recording has just started (user clicked).
