@@ -64,7 +64,7 @@ def fetch_ai_response(client, input_text, user_system_prompt="You are a helpful 
         return ""
 
 # Convert text to audio
-def text_to_audio(client, text, audio_path):
+def text_to_audio(client, text, audio_path, voice_type="onyx"):
     """
     Converts text to speech and saves it as an audio file using OpenAI's TTS model.
 
@@ -72,9 +72,10 @@ def text_to_audio(client, text, audio_path):
         client: An initialized OpenAI client.
         text (str): The text to convert to speech.
         audio_path (str): The path where the audio file will be saved.
+        voice_type (str): The desired voice for the TTS model.
     """
     try:
-        response = client.audio.speech.create(model="tts-1", voice="onyx", input=text)
+        response = client.audio.speech.create(model="tts-1", voice=voice_type, input=text)
         response.stream_to_file(audio_path)
     except Exception as e:
         st.error(f"Error converting text to audio: {e}")
@@ -111,15 +112,29 @@ def main():
         value="You are a helpful AI assistant." # Default prompt
     )
 
+    # Dropdown for voice selection
+    voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+    selected_voice = st.sidebar.selectbox("Select AI Voice", voices, index=voices.index("onyx")) # Default to 'onyx'
+
     # Initialize OpenAI client
     client = None
     try:
-        api_key = st.secrets["OPENAI_API_KEY"]
-        client = setup_openai_client(api_key)
-    except KeyError:
-        st.error("OpenAI API Key not found in Streamlit secrets. Please configure `OPENAI_API_KEY`.")
+        # It's assumed st.secrets is configured with OPENAI_API_KEY for deployment
+        # For local testing without secrets.toml, you might need to set it as an environment variable
+        # or directly here (though not recommended for production).
+        api_key = os.getenv("OPENAI_API_KEY") # Try getting from environment first
+        if not api_key:
+            api_key = st.secrets.get("OPENAI_API_KEY") # Then try Streamlit secrets
+
+        if api_key:
+            client = setup_openai_client(api_key)
+        else:
+            st.error("OpenAI API Key not found. Please set `OPENAI_API_KEY` in your environment variables or Streamlit secrets.")
+            return # Exit if no API key
+
     except Exception as e:
         st.error(f"Error setting up OpenAI client: {e}")
+        return # Exit if client setup fails
 
     # Only show audio recorder if client is successfully set up
     if client:
@@ -160,7 +175,8 @@ def main():
 
                 if ai_response:
                     st.spinner("Converting AI response to audio...")
-                    text_to_audio(client, ai_response, response_audio_file)
+                    # Pass the selected voice to the text_to_audio function
+                    text_to_audio(client, ai_response, response_audio_file, selected_voice)
 
                     if os.path.exists(response_audio_file): # Check if audio file was successfully created
                         auto_play_audio(response_audio_file)
@@ -176,8 +192,8 @@ def main():
             if os.path.exists(response_audio_file): # Ensure this is always checked for cleanup
                 os.remove(response_audio_file)
 
-    else: # If client is not set up
-        st.warning("Please ensure your OpenAI API Key is configured in Streamlit secrets to use the voice feature.")
+    else: # If client is not set up (due to missing API key)
+        st.warning("Please ensure your OpenAI API Key is configured to use the voice feature.")
 
 if __name__ == "__main__":
     main()
