@@ -4,14 +4,14 @@ import openai
 import base64
 import os
 
-# SETUP OPEN AI client
+# --- SETUP OPEN AI client ---
 def setup_openai_client(api_key):
     """
     Initializes and returns an OpenAI client.
     """
     return openai.OpenAI(api_key=api_key)
 
-# Function to transcribe audio to text
+# --- Function to transcribe audio to text ---
 def transcribe_audio(client, audio_path):
     """
     Transcribes an audio file to text using OpenAI's Whisper model.
@@ -31,7 +31,7 @@ def transcribe_audio(client, audio_path):
         st.error(f"Error during audio transcription: {e}")
         return ""
 
-# Taking response from OpenAI
+# --- Taking response from OpenAI ---
 def fetch_ai_response(client, input_text, user_system_prompt="You are a helpful AI assistant."):
     """
     Fetches a response from OpenAI's chat model based on the input text and system prompt.
@@ -63,7 +63,7 @@ def fetch_ai_response(client, input_text, user_system_prompt="You are a helpful 
         st.error(f"Error fetching AI response: {e}")
         return ""
 
-# Convert text to audio
+# --- Convert text to audio ---
 def text_to_audio(client, text, audio_path, voice_type="onyx"):
     """
     Converts text to speech and saves it as an audio file using OpenAI's TTS model.
@@ -80,7 +80,7 @@ def text_to_audio(client, text, audio_path, voice_type="onyx"):
     except Exception as e:
         st.error(f"Error converting text to audio: {e}")
 
-# Autoplay audio
+# --- Autoplay audio ---
 def auto_play_audio(audio_file_path):
     """
     Autoplays an audio file in the Streamlit application using HTML audio tags.
@@ -97,13 +97,15 @@ def auto_play_audio(audio_file_path):
     else:
         st.error(f"Error: Audio file not found at {audio_file_path}")
 
+# --- Main Streamlit Application ---
 def main():
-    """
-    The main function to run the Streamlit application.
-    """
     st.set_page_config(page_title="VoiceChat", page_icon="🤖")
     st.title("Lazy Voice Chatbot")
     st.write("Hello! Tap the microphone to talk with me. What can I do for you today?")
+
+    # Initialize session state for recording status
+    if 'recording_active' not in st.session_state:
+        st.session_state.recording_active = False
 
     # Sidebar for configuration
     st.sidebar.title("Configuration")
@@ -114,7 +116,7 @@ def main():
 
     # Dropdown for voice selection
     voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
-    selected_voice = st.sidebar.selectbox("Select AI Voice", voices, index=voices.index("onyx")) # Default to 'onyx'
+    selected_voice = st.sidebar.selectbox("Select AI Voice", voices, index=voices.index("onyx"))
 
     # Initialize OpenAI client
     client = None
@@ -138,7 +140,7 @@ def main():
         response_audio_file = "ai_response_audio.mp3"
 
         # Display the audio recorder with the fixed-duration trick
-        # Set a generous pause_threshold, e.g., 300 seconds (5 minutes)
+        # Set a generous pause_threshold (e.g., 5 minutes)
         # The user can click again to stop before this maximum duration
         recorded_audio_bytes = audio_recorder(
             text="",
@@ -147,8 +149,25 @@ def main():
             pause_threshold=300.0,         # Max recording duration (e.g., 5 minutes)
         )
 
-        # Process recorded audio if available
+        # Update recording status based on user interaction
+        # If recorded_audio_bytes is None and it was previously active, it means recording just started
+        if recorded_audio_bytes is None and not st.session_state.recording_active:
+            # This is a heuristic: If audio_recorder is displayed and no bytes are returned yet,
+            # and our state says it wasn't active, assume it just started.
+            # This might re-trigger if other Streamlit elements cause a rerun without user interaction,
+            # but for a simple single button, it works.
+            st.session_state.recording_active = True
+            st.experimental_rerun() # Rerun to display the message immediately
+
+        # Display the "click to stop" message when recording is active
+        if st.session_state.recording_active:
+            st.info("Recording... Click the microphone again to stop.")
+
+        # Process recorded audio if available (meaning recording has stopped)
         if recorded_audio_bytes:
+            # Recording has stopped, so update the state
+            st.session_state.recording_active = False
+
             try:
                 with open(temp_audio_file, "wb") as f:
                     f.write(recorded_audio_bytes)
