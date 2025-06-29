@@ -105,6 +105,12 @@ def main():
     st.title("Lazy Voice Chatbot")
     st.write("Hello! Tap the microphone to talk with me. What can I do for you today?")
 
+    # Initialize session state for recording status
+    if '_recording_active' not in st.session_state:
+        st.session_state._recording_active = False
+    if 'recorded_audio_bytes_cache' not in st.session_state:
+        st.session_state.recorded_audio_bytes_cache = None
+
     # Sidebar for configuration
     st.sidebar.title("Configuration")
     user_defined_system_prompt = st.sidebar.text_area(
@@ -119,80 +125,84 @@ def main():
     # Initialize OpenAI client
     client = None
     try:
-        # It's assumed st.secrets is configured with OPENAI_API_KEY for deployment
-        # For local testing without secrets.toml, you might need to set it as an environment variable
-        # or directly here (though not recommended for production).
-        api_key = os.getenv("OPENAI_API_KEY") # Try getting from environment first
+        api_key = os.getenv("OPENAI_API_KEY") 
         if not api_key:
-            api_key = st.secrets.get("OPENAI_API_KEY") # Then try Streamlit secrets
+            api_key = st.secrets.get("OPENAI_API_KEY") 
 
         if api_key:
             client = setup_openai_client(api_key)
         else:
             st.error("OpenAI API Key not found. Please set `OPENAI_API_KEY` in your environment variables or Streamlit secrets.")
-            return # Exit if no API key
-
+            return 
     except Exception as e:
         st.error(f"Error setting up OpenAI client: {e}")
-        return # Exit if client setup fails
+        return 
 
     # Only show audio recorder if client is successfully set up
     if client:
-        # Use a specific temporary file name
-        temp_audio_file = "temp_recorded_audio.wav" # audio_recorder_streamlit saves as WAV by default
-        response_audio_file = "ai_response_audio.mp3" # Define this here to ensure it's always available for cleanup
+        temp_audio_file = "temp_recorded_audio.wav"
+        response_audio_file = "ai_response_audio.mp3"
 
-        # Display the audio recorder
-        recorded_audio_bytes = audio_recorder(
-            text="", # No text needed, just the icon
-            icon_size="3x", # Make the icon larger
-            # You can add the icon directly if needed, e.g., icon="microphone"
-            # Setting 'key' helps maintain state across reruns if multiple recorders were present
-        )
+        # Toggle recording state with a button
+        if st.button(f"Click to {'Stop' if st.session_state._recording_active else 'Start'} Recording"):
+            st.session_state._recording_active = not st.session_state._recording_active
+            st.session_state.recorded_audio_bytes_cache = None # Clear previous recording when toggling
 
-        # Process recorded audio if available
-        if recorded_audio_bytes:
-            # Save the recorded bytes to a temporary file
-            try:
-                with open(temp_audio_file, "wb") as f:
-                    f.write(recorded_audio_bytes)
-            except Exception as e:
-                st.error(f"Error saving recorded audio: {e}")
-                # Clean up if save failed and then return
+        if st.session_state._recording_active:
+            st.write("Recording active... Click again to stop.")
+            # Display the audio recorder only when active
+            recorded_audio_bytes = audio_recorder(
+                text="", 
+                icon_size="3x", 
+                key="audio_recorder_active"
+            )
+            if recorded_audio_bytes:
+                st.session_state.recorded_audio_bytes_cache = recorded_audio_bytes
+                # Do not process immediately, wait for toggle off
+        else:
+            st.write("Recording stopped. Click to start recording.")
+            # Process the cached audio when recording is toggled off
+            if st.session_state.recorded_audio_bytes_cache:
+                recorded_audio_bytes = st.session_state.recorded_audio_bytes_cache
+                st.session_state.recorded_audio_bytes_cache = None # Clear after processing
+
+                # Save the recorded bytes to a temporary file
+                try:
+                    with open(temp_audio_file, "wb") as f:
+                        f.write(recorded_audio_bytes)
+                except Exception as e:
+                    st.error(f"Error saving recorded audio: {e}")
+                    if os.path.exists(temp_audio_file):
+                        os.remove(temp_audio_file)
+                    return
+
+                st.spinner("Transcribing your audio...")
+                transcribed_text = transcribe_audio(client, temp_audio_file)
+
+                if transcribed_text:
+                    st.subheader("Transcribed Text")
+                    st.info(transcribed_text)
+
+                    st.spinner("Getting AI response...")
+                    ai_response = fetch_ai_response(client, transcribed_text, user_defined_system_prompt)
+
+                    if ai_response:
+                        st.spinner("Converting AI response to audio...")
+                        text_to_audio(client, ai_response, response_audio_file, selected_voice)
+
+                        if os.path.exists(response_audio_file):
+                            auto_play_audio(response_audio_file)
+                            st.subheader("AI Response")
+                            st.success(ai_response)
+                        else:
+                            st.warning("Could not generate audio for AI response.")
+
+                # Clean up temporary audio files at the end of processing
                 if os.path.exists(temp_audio_file):
                     os.remove(temp_audio_file)
-                return
-
-            st.spinner("Transcribing your audio...")
-            transcribed_text = transcribe_audio(client, temp_audio_file)
-
-            if transcribed_text:
-                st.subheader("Transcribed Text")
-                st.info(transcribed_text) # Using st.info for a styled box
-
-                st.spinner("Getting AI response...")
-                ai_response = fetch_ai_response(client, transcribed_text, user_defined_system_prompt)
-
-                if ai_response:
-                    st.spinner("Converting AI response to audio...")
-                    # Pass the selected voice to the text_to_audio function
-                    text_to_audio(client, ai_response, response_audio_file, selected_voice)
-
-                    if os.path.exists(response_audio_file): # Check if audio file was successfully created
-                        auto_play_audio(response_audio_file)
-                        st.subheader("AI Response")
-                        # Using st.success for a different styled box for AI response
-                        st.success(ai_response)
-                    else:
-                        st.warning("Could not generate audio for AI response.")
-
-            # Clean up temporary audio files at the end of processing
-            if os.path.exists(temp_audio_file):
-                os.remove(temp_audio_file)
-            if os.path.exists(response_audio_file): # Ensure this is always checked for cleanup
-                os.remove(response_audio_file)
-
-    else: # If client is not set up (due to missing API key)
+                if os.path.exists(response_audio_file):
+                    os.remove(response_audio_file)
+    else: 
         st.warning("Please ensure your OpenAI API Key is configured to use the voice feature.")
 
 if __name__ == "__main__":
