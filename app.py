@@ -98,7 +98,7 @@ def main():
         response_audio_file = "ai_response_audio.mp3"
 
         # Determine the text for the audio_recorder button
-        button_text = "Tap to record and to stop recording. max 3 minutss"
+        button_text = "Tap to record and to stop recording. max 3 minutes"
        
 
         # Display the audio recorder
