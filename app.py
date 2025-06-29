@@ -98,9 +98,8 @@ def main():
         response_audio_file = "ai_response_audio.mp3"
 
         # Determine the text for the audio_recorder button
-        button_text = "Tap to record"
-        if st.session_state.recording_active:
-            button_text = "Recording... Tap to stop"
+        button_text = "Tap to record/stop recording. max 3 mins"
+       
 
         # Display the audio recorder
         # The audio_recorder returns None while recording is in progress
@@ -108,7 +107,7 @@ def main():
             text=button_text, # Dynamic text based on recording state
             icon_size="3x",
             energy_threshold=(-1.0, 1.0),  # Disable automatic stop on silence
-            pause_threshold=300.0,         # Max recording duration (e.g., 5 minutes)
+            pause_threshold=180.0,         # Max recording duration (e.g., 3 minutes)
         )
 
         # Logic to update recording state
