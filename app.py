@@ -1,6 +1,5 @@
 import streamlit as st
-# Import mic_recorder from the correct library
-from streamlit_mic_recorder import mic_recorder
+from streamlit_mic_recorder import mic_recorder # Ensure this import is correct
 import openai
 import base64
 import os
@@ -62,8 +61,6 @@ def main():
     # Initialize messages for chat display (assuming you want a chat history)
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    # You might want to add an initial AI message here if needed
-    # st.session_state.messages.append({"role": "assistant", "content": "Hello! How can I help you today?"})
 
     # Sidebar for configuration
     st.sidebar.title("Configuration")
@@ -97,9 +94,9 @@ def main():
         temp_audio_file = "temp_recorded_audio.wav"
         response_audio_file = "ai_response_audio.mp3"
 
-        # --- Display chat messages (from your snippet) ---
+        # --- Display chat messages ---
         for message in st.session_state.messages:
-            if message["role"] != "system": # System messages are not displayed in chat bubbles
+            if message["role"] != "system":
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
 
@@ -111,8 +108,7 @@ def main():
             prompt = st.chat_input("Your response", max_chars=1000, key="chat_text_input")
 
         with col2:
-            # Microphone recorder button (from your snippet)
-            # mic_recorder returns a dict like {'bytes': b'...', 'sample_rate': 44100} or None
+            # Microphone recorder button
             mic_recorder_output = mic_recorder(
                 start_prompt="🎙️ Speak",
                 stop_prompt="⏹️ Stop",
@@ -124,16 +120,18 @@ def main():
             st.session_state.audio_bytes_data = mic_recorder_output
 
         # Process recorded audio if available from mic_recorder
+        # This block will only run if mic_recorder_output is NOT None (i.e., recording has just finished)
         if st.session_state.audio_bytes_data:
-            recorded_audio_bytes = st.session_state.audio_bytes_data['bytes'] # Extract bytes from the dict
-            # Clear the audio data from session state immediately after use to prevent re-processing on rerun
+            recorded_audio_bytes = st.session_state.audio_bytes_data['bytes']
+            # IMPORTANT: Clear the audio data immediately after retrieving it
+            # This prevents the block from re-executing on subsequent reruns
             st.session_state.audio_bytes_data = None
 
-            # Add user message to chat history
-            st.session_state.messages.append({"role": "user", "content": "_(Audio Input)_"})
-            st.rerun() # Rerun to display the "_Audio Input_" message immediately
+            # Add user message placeholder to chat history and trigger a rerun to show it
+            st.session_state.messages.append({"role": "user", "content": "_(Transcribing Audio...)_"})
+            st.rerun() # Show placeholder immediately
 
-            # Now, proceed with transcription and AI response
+            # Save the recorded bytes to a temporary file
             try:
                 with open(temp_audio_file, "wb") as f:
                     f.write(recorded_audio_bytes)
@@ -147,15 +145,13 @@ def main():
             transcribed_text = transcribe_audio(client, temp_audio_file)
 
             if transcribed_text:
-                # Replace the "_Audio Input_" placeholder with the actual transcribed text
-                if st.session_state.messages and st.session_state.messages[-1]["content"] == "_(Audio Input)_":
+                # Update the last user message with the transcribed text
+                # We assume the last message is the placeholder we just added
+                if st.session_state.messages and st.session_state.messages[-1]["role"] == "user" and \
+                   st.session_state.messages[-1]["content"] == "_(Transcribing Audio...)_":
                     st.session_state.messages[-1]["content"] = transcribed_text
-                else: # Fallback if for some reason the placeholder isn't there
+                else: # Fallback in case of unexpected state
                     st.session_state.messages.append({"role": "user", "content": transcribed_text})
-
-                # Display transcribed text in the UI
-                with st.chat_message("user"):
-                    st.markdown(transcribed_text) # Display it directly in the chat
 
                 st.spinner("Getting AI response...")
                 ai_response = fetch_ai_response(client, transcribed_text, user_defined_system_prompt)
@@ -164,31 +160,22 @@ def main():
                     st.spinner("Converting AI response to audio...")
                     text_to_audio(client, ai_response, response_audio_file, selected_voice)
 
-                    # Add AI response to chat history
                     st.session_state.messages.append({"role": "assistant", "content": ai_response})
 
                     if os.path.exists(response_audio_file):
                         auto_play_audio(response_audio_file)
-                        # Display AI response in the UI
-                        with st.chat_message("assistant"):
-                            st.markdown(ai_response)
-                    else:
-                        st.warning("Could not generate audio for AI response.")
-            st.rerun() # Rerun to update chat after processing
+            st.rerun() # Crucial rerun here to update chat messages after transcription/AI response
 
         # Handle text input prompt
         if prompt:
             st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
+            # No need for st.chat_message here as it will be rendered by the loop at the top
+            
             st.spinner("Getting AI response...")
             ai_response = fetch_ai_response(client, prompt, user_defined_system_prompt)
 
             if ai_response:
                 st.session_state.messages.append({"role": "assistant", "content": ai_response})
-                with st.chat_message("assistant"):
-                    st.markdown(ai_response)
             st.rerun() # Rerun to clear chat input and update messages
 
         # Clean up temporary audio files at the end of processing
