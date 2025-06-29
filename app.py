@@ -100,8 +100,8 @@ def main():
     """
     The main function to run the Streamlit application.
     """
-    st.set_page_config(page_title="VoiceChat 🤖", page_icon="🤖")
-    st.title("Aurora SpeakEasy")
+    st.set_page_config(page_title="VoiceChat", page_icon="🤖")
+    st.title("Lazy Voice Chatbot")
     st.write("Hello! Tap the microphone to talk with me. What can I do for you today?")
 
     # Sidebar for configuration
