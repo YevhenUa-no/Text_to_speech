@@ -1,0 +1,1 @@
+- adding tts-1-hd model, which will add option of voice customizations with instructions paramenter 
