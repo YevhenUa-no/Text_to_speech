@@ -1,3 +1,4 @@
 streamlit
-streamlit-mic-recorder
 openai
+streamlit-js-eval
+streamlit-mic-recorder # Add this
